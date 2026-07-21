@@ -20,30 +20,27 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def find_data_file(app_dir: str, target_filename: str) -> str | None:
-    """폴더(및 하위 폴더) 내 CSV 파일을 찾는다.
+    """app.py(=main.py)와 같은 메인 폴더에서 CSV 파일을 찾는다.
     한글 파일명은 macOS(NFD)와 Linux(NFC) 간 유니코드 정규화 방식이 달라
     파일명이 100% 동일해 보여도 os.path.exists가 실패할 수 있으므로,
-    정규화 후 비교하고 그래도 없으면 폴더(하위 폴더 포함) 내 첫 번째 csv를 사용한다."""
+    정규화 후 비교하고 그래도 없으면 같은 폴더 안의 첫 번째 csv를 사용한다."""
     if not os.path.isdir(app_dir):
         return None
 
+    entries = os.listdir(app_dir)
     target_norm = unicodedata.normalize("NFC", target_filename)
 
-    # 1) 최상위 폴더에서 정확히 이름이 일치하는 파일 우선 탐색 (정규화 비교)
-    for entry in os.listdir(app_dir):
+    # 1) 이름이 정확히 일치하는 파일 우선 (유니코드 정규화 후 비교)
+    for entry in entries:
         if unicodedata.normalize("NFC", entry) == target_norm:
             return os.path.join(app_dir, entry)
 
-    # 2) 하위 폴더까지 재귀적으로 탐색 (이름 일치 -> 없으면 아무 csv나)
-    fallback_csv = None
-    for root, _dirs, files in os.walk(app_dir):
-        for entry in files:
-            if unicodedata.normalize("NFC", entry) == target_norm:
-                return os.path.join(root, entry)
-            if fallback_csv is None and entry.lower().endswith(".csv"):
-                fallback_csv = os.path.join(root, entry)
+    # 2) 정확히 일치하는 이름이 없으면, 같은 폴더 안의 csv 파일 중 하나를 사용
+    csv_candidates = sorted(e for e in entries if e.lower().endswith(".csv"))
+    if csv_candidates:
+        return os.path.join(app_dir, csv_candidates[0])
 
-    return fallback_csv
+    return None
 
 
 DATA_PATH = find_data_file(APP_DIR, DATA_FILENAME)
@@ -91,18 +88,14 @@ def load_data(path: str) -> pd.DataFrame:
 if DATA_PATH is None or not os.path.exists(DATA_PATH):
     st.error(
         f"데이터 파일을 찾을 수 없습니다: `{DATA_FILENAME}`\n\n"
-        "이 파일이 app.py와 같은 저장소(하위 폴더 포함) 안에 있는지 확인해주세요."
+        "이 파일이 app.py(main.py)와 같은 메인 폴더에 있는지 확인해주세요."
     )
     try:
-        all_files = []
-        for root, _dirs, files in os.walk(APP_DIR):
-            for f in files:
-                rel_path = os.path.relpath(os.path.join(root, f), APP_DIR)
-                all_files.append(rel_path)
+        actual_files = os.listdir(APP_DIR)
     except Exception as e:
-        all_files = [f"(폴더를 읽을 수 없음: {e})"]
-    st.write("현재 저장소(`", APP_DIR, "`) 안에 있는 전체 파일 목록:")
-    st.code("\n".join(all_files) if all_files else "(파일 없음)")
+        actual_files = [f"(폴더를 읽을 수 없음: {e})"]
+    st.write("현재 메인 폴더(`", APP_DIR, "`)에 있는 파일 목록:")
+    st.code("\n".join(actual_files) if actual_files else "(파일 없음)")
     st.stop()
 
 df_long = load_data(DATA_PATH)
